@@ -289,22 +289,41 @@ def main():
     if conn.execute('SELECT * FROM users WHERE username = "admin"').fetchone() is None:
         insert_user(conn, 'admin', 'admin123', 'admin@example.com', 'admin')
 
-    if 'username' not in st.session_state:
-        st.sidebar.title("Login")
-        username = st.sidebar.text_input("Username")
-        password = st.sidebar.text_input("Password", type="password")
-        login_button = st.sidebar.button("Login")
 
-        if login_button:
-            user, role, status = check_credentials(conn, username, password)
-            if user:
-                if status == "suspended":
-                    st.error("Your account is suspended. Please contact the admin.")
-                else:
-                    st.session_state['username'] = user
-                    st.session_state['role'] = role
-                    st.success(f"Welcome {user}!")
-                    st.experimental_rerun()
+# Initialize session state if not already done
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+    st.session_state['username'] = ""
+    st.session_state['role'] = ""
+
+# Login form
+if not st.session_state['logged_in']:
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    login_button = st.button("Login")
+
+    if login_button:
+        user, role, status = check_credentials(conn, username, password)
+        if user:
+            if status == "suspended":
+                st.error("Your account is suspended. Please contact the admin.")
+            else:
+                st.session_state['logged_in'] = True
+                st.session_state['username'] = user
+                st.session_state['role'] = role
+                st.success(f"Welcome {user}!")
+        else:
+            st.error("Incorrect username or password")
+
+# Logged in content
+if st.session_state['logged_in']:
+    st.sidebar.write(f"Logged in as: {st.session_state['username']} ({st.session_state['role']})")
+    logout_button = st.sidebar.button("Logout")
+    if logout_button:
+        st.session_state['logged_in'] = False
+        st.session_state['username'] = ""
+        st.session_state['role'] = ""
+        st.experimental_rerun()
             else:
                 st.error("Incorrect username or password")
     else:
