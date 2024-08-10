@@ -274,6 +274,7 @@ def fetch_email_history(conn):
     return rows
 
 # Main Application Function
+# Main Application Function
 def main():
     st.set_page_config(layout="wide")
     st.title("Victory Information Management System")
@@ -301,7 +302,8 @@ def main():
                     st.session_state['username'] = user
                     st.session_state['role'] = role
                     st.success(f"Welcome {user}!")
-                    st.experimental_rerun()
+                    # Use st.experimental_set_query_params to simulate a rerun
+                    st.experimental_set_query_params()
             else:
                 st.error("Incorrect username or password")
     else:
@@ -310,13 +312,44 @@ def main():
         if logout_button:
             del st.session_state['username']
             del st.session_state['role']
-            st.experimental_rerun()
+            st.experimental_set_query_params()
 
         tab_titles = ["Student Registration", "Payments", "Summary & Visualization", "Chat", "Email"]
         if st.session_state['role'] == 'admin':
             tab_titles.append("Manage Users")
 
         tabs = st.tabs(tab_titles)
+
+        # Student Registration Tab
+        with tabs[0]:
+            st.header("Student Registration")
+            # (Your registration code here)
+
+        # Payments Tab
+        with tabs[1]:
+            st.header('Payments')
+            # (Your payments code here)
+
+        # Summary & Visualization Tab
+        with tabs[2]:
+            st.header('Summary Statistics and Visualization')
+            # (Your summary code here)
+
+        # Chat Tab
+        with tabs[3]:
+            st.header('Chat')
+            # (Your chat code here)
+
+        # Email Tab
+        with tabs[4]:
+            st.header("Send Email")
+            # (Your email code here)
+
+        # Manage Users Tab (Admin only)
+        if st.session_state['role'] == 'admin':
+            with tabs[5]:
+                st.header("Manage Users")
+                # (Your user management code here)
 
         # Student Registration Tab
         with tabs[0]:
