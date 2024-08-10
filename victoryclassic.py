@@ -1,7 +1,3 @@
-import streamlit as st
-st.set_page_config(layout="wide")
-
-
 import sqlite3
 import streamlit as st
 from passlib.hash import pbkdf2_sha256
@@ -279,6 +275,7 @@ def fetch_email_history(conn):
 
 # Main Application Function
 def main():
+    st.set_page_config(layout="wide")
     st.title("Victory Information Management System")
 
     db_path = 'sika_manager.db'
