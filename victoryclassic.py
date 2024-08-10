@@ -323,7 +323,6 @@ if st.session_state['logged_in']:
         st.session_state['logged_in'] = False
         st.session_state['username'] = ""
         st.session_state['role'] = ""
-        st.experimental_rerun()
             else:
                 st.error("Incorrect username or password")
     else:
@@ -332,7 +331,6 @@ if st.session_state['logged_in']:
         if logout_button:
             del st.session_state['username']
             del st.session_state['role']
-            st.experimental_rerun()
 
         tab_titles = ["Student Registration", "Payments", "Summary & Visualization", "Chat", "Email"]
         if st.session_state['role'] == 'admin':
@@ -360,7 +358,6 @@ if st.session_state['logged_in']:
                     record = (client_name, outstanding_document, assigned_to, application_date.strftime('%Y-%m-%d'), institution_applied_to, status, decision, remarks, doc_file_content)
                     insert_registration_record(conn, record)
                     st.success("Student registered successfully!")
-                    st.experimental_rerun()
 
             st.subheader("Registered Students")
             records = fetch_all_registration_records(conn)
@@ -374,7 +371,6 @@ if st.session_state['logged_in']:
                 if st.button("Delete Record"):
                     delete_registration_record(conn, selected_id)
                     st.success("Record deleted successfully!")
-                    st.experimental_rerun()
 
                 if st.button("Edit Record"):
                     record = df[df['ID'] == selected_id].iloc[0]
@@ -392,7 +388,6 @@ if st.session_state['logged_in']:
                         if submit_edit:
                             update_registration_record(conn, (client_name, outstanding_document, assigned_to, application_date.strftime('%Y-%m-%d'), institution_applied_to, status, decision, remarks, selected_id))
                             st.success("Record updated successfully!")
-                            st.experimental_rerun()
 
         # Payments Tab
         with tabs[1]:
@@ -415,7 +410,6 @@ if st.session_state['logged_in']:
                             payment_record = (selected_id, requested_service, quantity, amount, cost, currency, date.strftime('%Y-%m-%d'), balance_due)
                             insert_payment_record(conn, payment_record)
                             st.success("Payment record added successfully!")
-                            st.experimental_rerun()
 
                 st.subheader("Payment Records")
                 payment_records = fetch_payment_records_with_client_names(conn)
@@ -429,7 +423,6 @@ if st.session_state['logged_in']:
                     if st.button("Delete Payment"):
                         delete_payment_record(conn, selected_payment_id)
                         st.success("Payment deleted successfully!")
-                        st.experimental_rerun()
 
                     if st.button("Edit Payment"):
                         payment = df[df['ID'] == selected_payment_id].iloc[0]
@@ -447,7 +440,6 @@ if st.session_state['logged_in']:
                             if submit_edit:
                                 update_payment_record(conn, (student_registration_id, requested_service, quantity, amount, cost, currency, date.strftime('%Y-%m-%d'), balance_due, selected_payment_id))
                                 st.success("Payment record updated successfully!")
-                                st.experimental_rerun()
 
         # Summary & Visualization Tab
         with tabs[2]:
@@ -479,7 +471,6 @@ if st.session_state['logged_in']:
                     with open(attachment_path, "wb") as f:
                         f.write(attachment.read())
                 insert_chat_message(conn, user, message, attachment_path)
-                st.experimental_rerun()
 
             st.subheader('Chat History')
             contact = st.selectbox("Select Contact", [row[1] for row in fetch_all_users(conn)])
@@ -493,7 +484,6 @@ if st.session_state['logged_in']:
             refresh_rate = st.slider('Refresh rate (seconds)', 1, 30, 5)
             if st.button('Start Auto-Refresh'):
                 time.sleep(refresh_rate)
-                st.experimental_rerun()
 
         # Email Tab
         with tabs[4]:
@@ -540,7 +530,6 @@ if st.session_state['logged_in']:
                         try:
                             insert_user(conn, new_username, new_password, new_email, new_role)
                             st.success("New user added successfully!")
-                            st.experimental_rerun()
                         except sqlite3.IntegrityError:
                             st.error("Username already exists!")
 
@@ -561,19 +550,16 @@ if st.session_state['logged_in']:
                         if st.button(f"Suspend {selected_user['Username']}"):
                             update_user_status(conn, selected_user_id, "suspended")
                             st.success(f"User {selected_user['Username']} suspended.")
-                            st.experimental_rerun()
 
                         # Reactivate User
                         if st.button(f"Reactivate {selected_user['Username']}"):
                             update_user_status(conn, selected_user_id, "active")
                             st.success(f"User {selected_user['Username']} reactivated.")
-                            st.experimental_rerun()
 
                         # Delete User
                         if st.button(f"Delete {selected_user['Username']}"):
                             delete_user(conn, selected_user_id)
                             st.success(f"User {selected_user['Username']} deleted.")
-                            st.experimental_rerun()
 
                         # Update User Permissions
                         st.subheader("Update User Permissions")
@@ -589,7 +575,6 @@ if st.session_state['logged_in']:
                                 permissions = (registration_access, payment_access, summary_access, chat_access, email_access)
                                 update_user_permissions(conn, selected_user_id, permissions)
                                 st.success("Permissions updated successfully!")
-                                st.experimental_rerun()
 
 if __name__ == '__main__':
     main()
