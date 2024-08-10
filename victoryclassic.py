@@ -320,11 +320,54 @@ def main():
             del st.session_state['role']
             st.experimental_rerun()
 
+        # Define the tab names
         tab_titles = ["Student Registration", "Payments", "Summary & Visualization", "Chat", "Email"]
         if st.session_state['role'] == 'admin':
             tab_titles.append("Manage Users")
 
+        # Create tabs
         tabs = st.tabs(tab_titles)
+
+        # Student Registration Tab
+        with tabs[0]:
+            # Your code here...
+
+        # Payments Tab
+        with tabs[1]:
+            # Your code here...
+
+        # Summary & Visualization Tab
+        with tabs[2]:
+            st.header('Summary Statistics and Visualization')
+            try:
+                summary_statistics = conn.execute("SELECT currency, SUM(amount), SUM(balance_due) FROM student_payments GROUP BY currency").fetchall()
+                if summary_statistics:
+                    df = pd.DataFrame(summary_statistics, columns=["Currency", "Total Amount", "Total Balance Due"])
+                    st.table(df)
+
+                    currency_data = df["Currency"]
+                    amount_data = df["Total Amount"]
+
+                    fig, ax = plt.subplots()
+                    ax.bar(currency_data, amount_data)
+                    st.pyplot(fig)
+                else:
+                    st.info("No data available for visualization.")
+            except sqlite3.Error as e:
+                st.error(f"Error generating summary statistics: {e}")
+
+        # Chat Tab
+        with tabs[3]:
+            # Your code here...
+
+        # Email Tab
+        with tabs[4]:
+            # Your code here...
+
+        # Manage Users Tab (Admin only)
+        if st.session_state['role'] == 'admin':
+            with tabs[5]:
+                # Your code here...
 
         # Student Registration Tab
         with tabs[0]:
