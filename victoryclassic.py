@@ -1,7 +1,3 @@
-import streamlit as st
-st.set_page_config(layout="wide")
-
-
 import sqlite3
 import streamlit as st
 from passlib.hash import pbkdf2_sha256
@@ -279,6 +275,7 @@ def fetch_email_history(conn):
 
 # Main Application Function
 def main():
+    st.set_page_config(layout="wide")
     st.title("Victory Information Management System")
 
     db_path = 'sika_manager.db'
@@ -289,48 +286,31 @@ def main():
     if conn.execute('SELECT * FROM users WHERE username = "admin"').fetchone() is None:
         insert_user(conn, 'admin', 'admin123', 'admin@example.com', 'admin')
 
+    if 'username' not in st.session_state:
+        st.sidebar.title("Login")
+        username = st.sidebar.text_input("Username")
+        password = st.sidebar.text_input("Password", type="password")
+        login_button = st.sidebar.button("Login")
 
-# Initialize session state if not already done
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
-    st.session_state['username'] = ""
-    st.session_state['role'] = ""
-
-# Login form
-if not st.session_state['logged_in']:
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    login_button = st.button("Login")
-
-    if login_button:
-        user, role, status = check_credentials(conn, username, password)
-        if user:
-            if status == "suspended":
-                st.error("Your account is suspended. Please contact the admin.")
-            else:
-                st.session_state['logged_in'] = True
-                st.session_state['username'] = user
-                st.session_state['role'] = role
-                st.success(f"Welcome {user}!")
-        else:
-            st.error("Incorrect username or password")
-
-# Logged in content
-if st.session_state['logged_in']:
-    st.sidebar.write(f"Logged in as: {st.session_state['username']} ({st.session_state['role']})")
-    logout_button = st.sidebar.button("Logout")
-    if logout_button:
-        st.session_state['logged_in'] = False
-        st.session_state['username'] = ""
-        st.session_state['role'] = ""
-else:
-                st.error("Incorrect username or password")
+        if login_button:
+            user, role, status = check_credentials(conn, username, password)
+            if user:
+                if status == "suspended":
+                    st.error("Your account is suspended. Please contact the admin.")
                 else:
+                    st.session_state['username'] = user
+                    st.session_state['role'] = role
+                    st.success(f"Welcome {user}!")
+                    st.experimental_set_query_params(rerun=True)
+            else:
+                st.error("Incorrect username or password")
+    else:
         st.sidebar.write(f"Logged in as: {st.session_state['username']} ({st.session_state['role']})")
         logout_button = st.sidebar.button("Logout")
         if logout_button:
             del st.session_state['username']
             del st.session_state['role']
+            st.experimental_set_query_params(rerun=True)
 
         tab_titles = ["Student Registration", "Payments", "Summary & Visualization", "Chat", "Email"]
         if st.session_state['role'] == 'admin':
@@ -358,6 +338,7 @@ else:
                     record = (client_name, outstanding_document, assigned_to, application_date.strftime('%Y-%m-%d'), institution_applied_to, status, decision, remarks, doc_file_content)
                     insert_registration_record(conn, record)
                     st.success("Student registered successfully!")
+                    st.experimental_set_query_params(rerun=True)
 
             st.subheader("Registered Students")
             records = fetch_all_registration_records(conn)
@@ -371,6 +352,7 @@ else:
                 if st.button("Delete Record"):
                     delete_registration_record(conn, selected_id)
                     st.success("Record deleted successfully!")
+                    st.experimental_set_query_params(rerun=True)
 
                 if st.button("Edit Record"):
                     record = df[df['ID'] == selected_id].iloc[0]
@@ -388,6 +370,7 @@ else:
                         if submit_edit:
                             update_registration_record(conn, (client_name, outstanding_document, assigned_to, application_date.strftime('%Y-%m-%d'), institution_applied_to, status, decision, remarks, selected_id))
                             st.success("Record updated successfully!")
+                            st.experimental_set_query_params(rerun=True)
 
         # Payments Tab
         with tabs[1]:
@@ -410,6 +393,7 @@ else:
                             payment_record = (selected_id, requested_service, quantity, amount, cost, currency, date.strftime('%Y-%m-%d'), balance_due)
                             insert_payment_record(conn, payment_record)
                             st.success("Payment record added successfully!")
+                            st.experimental_set_query_params(rerun=True)
 
                 st.subheader("Payment Records")
                 payment_records = fetch_payment_records_with_client_names(conn)
@@ -423,6 +407,7 @@ else:
                     if st.button("Delete Payment"):
                         delete_payment_record(conn, selected_payment_id)
                         st.success("Payment deleted successfully!")
+                        st.experimental_set_query_params(rerun=True)
 
                     if st.button("Edit Payment"):
                         payment = df[df['ID'] == selected_payment_id].iloc[0]
@@ -440,6 +425,7 @@ else:
                             if submit_edit:
                                 update_payment_record(conn, (student_registration_id, requested_service, quantity, amount, cost, currency, date.strftime('%Y-%m-%d'), balance_due, selected_payment_id))
                                 st.success("Payment record updated successfully!")
+                                st.experimental_set_query_params(rerun=True)
 
         # Summary & Visualization Tab
         with tabs[2]:
@@ -471,6 +457,7 @@ else:
                     with open(attachment_path, "wb") as f:
                         f.write(attachment.read())
                 insert_chat_message(conn, user, message, attachment_path)
+                st.experimental_set_query_params(rerun=True)
 
             st.subheader('Chat History')
             contact = st.selectbox("Select Contact", [row[1] for row in fetch_all_users(conn)])
@@ -484,6 +471,7 @@ else:
             refresh_rate = st.slider('Refresh rate (seconds)', 1, 30, 5)
             if st.button('Start Auto-Refresh'):
                 time.sleep(refresh_rate)
+                st.experimental_set_query_params(rerun=True)
 
         # Email Tab
         with tabs[4]:
@@ -530,6 +518,7 @@ else:
                         try:
                             insert_user(conn, new_username, new_password, new_email, new_role)
                             st.success("New user added successfully!")
+                            st.experimental_set_query_params(rerun=True)
                         except sqlite3.IntegrityError:
                             st.error("Username already exists!")
 
@@ -550,16 +539,19 @@ else:
                         if st.button(f"Suspend {selected_user['Username']}"):
                             update_user_status(conn, selected_user_id, "suspended")
                             st.success(f"User {selected_user['Username']} suspended.")
+                            st.experimental_set_query_params(rerun=True)
 
                         # Reactivate User
                         if st.button(f"Reactivate {selected_user['Username']}"):
                             update_user_status(conn, selected_user_id, "active")
                             st.success(f"User {selected_user['Username']} reactivated.")
+                            st.experimental_set_query_params(rerun=True)
 
                         # Delete User
                         if st.button(f"Delete {selected_user['Username']}"):
                             delete_user(conn, selected_user_id)
                             st.success(f"User {selected_user['Username']} deleted.")
+                            st.experimental_set_query_params(rerun=True)
 
                         # Update User Permissions
                         st.subheader("Update User Permissions")
@@ -575,6 +567,7 @@ else:
                                 permissions = (registration_access, payment_access, summary_access, chat_access, email_access)
                                 update_user_permissions(conn, selected_user_id, permissions)
                                 st.success("Permissions updated successfully!")
+                                st.experimental_set_query_params(rerun=True)
 
 if __name__ == '__main__':
     main()
