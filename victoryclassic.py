@@ -178,39 +178,47 @@ def delete_registration_record(conn, record_id):
 
 # Payment Functions
 def insert_payment_record(conn, record):
-    sql = '''INSERT INTO student_payments(student_registration_id, requested_service, quantity, amount, cost, currency, date, balance_due)
-             VALUES(?,?,?,?,?,?,?,?)'''
-    cur = conn.cursor()
-    cur.execute(sql, record)
-    conn.commit()
-
-def fetch_all_payment_records(conn):
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM student_payments")
-    rows = cur.fetchall()
-    return rows
+    try:
+        sql = '''INSERT INTO student_payments(student_registration_id, requested_service, quantity, amount, cost, currency, date, balance_due)
+                 VALUES(?,?,?,?,?,?,?,?)'''
+        cur = conn.cursor()
+        cur.execute(sql, record)
+        conn.commit()
+        st.success("Payment record added successfully!")
+    except sqlite3.Error as e:
+        st.error(f"Error inserting payment record: {e}")
 
 def fetch_payment_records_with_client_names(conn):
-    cur = conn.cursor()
-    cur.execute('''SELECT sp.id, sr.client_name, sp.student_registration_id, sp.requested_service, sp.quantity, sp.amount, sp.cost, sp.currency, sp.date
-                   FROM student_payments sp
-                   JOIN student_registration sr ON sp.student_registration_id = sr.id''')
-    rows = cur.fetchall()
-    return rows
+    try:
+        cur = conn.cursor()
+        cur.execute('''SELECT sp.id, sr.client_name, sp.student_registration_id, sp.requested_service, sp.quantity, sp.amount, sp.cost, sp.currency, sp.date
+                       FROM student_payments sp
+                       JOIN student_registration sr ON sp.student_registration_id = sr.id''')
+        rows = cur.fetchall()
+        return rows
+    except sqlite3.Error as e:
+        st.error(f"Error fetching payment records: {e}")
+        return []
 
-def update_payment_record(conn, record):
-    sql = '''UPDATE student_payments
-             SET student_registration_id=?, requested_service=?, quantity=?, amount=?, cost=?, currency=?, date=?, balance_due=?
-             WHERE id=?'''
-    cur = conn.cursor()
-    cur.execute(sql, record)
-    conn.commit()
+# Summary & Visualization Tab
+with tabs[2]:
+    st.header('Summary Statistics and Visualization')
+    try:
+        summary_statistics = conn.execute("SELECT currency, SUM(amount), SUM(balance_due) FROM student_payments GROUP BY currency").fetchall()
+        if summary_statistics:
+            df = pd.DataFrame(summary_statistics, columns=["Currency", "Total Amount", "Total Balance Due"])
+            st.table(df)
 
-def delete_payment_record(conn, record_id):
-    sql = '''DELETE FROM student_payments WHERE id=?'''
-    cur = conn.cursor()
-    cur.execute(sql, (record_id,))
-    conn.commit()
+            currency_data = df["Currency"]
+            amount_data = df["Total Amount"]
+
+            fig, ax = plt.subplots()
+            ax.bar(currency_data, amount_data)
+            st.pyplot(fig)
+        else:
+            st.info("No data available for visualization.")
+    except sqlite3.Error as e:
+        st.error(f"Error generating summary statistics: {e}")
 
 # Chat Functions
 def insert_chat_message(conn, user, message, attachment=None):
