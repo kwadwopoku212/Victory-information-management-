@@ -146,16 +146,6 @@ def fetch_all_registration_records(conn):
     rows = cur.fetchall()
     return rows
 
-def fetch_payment_records_with_client_names(conn):
-    cur = conn.cursor()
-    cur.execute('''SELECT student_payments.id, student_registration.client_name, student_payments.student_registration_id, 
-                          student_payments.requested_service, student_payments.quantity, student_payments.amount, 
-                          student_payments.cost, student_payments.currency, student_payments.date 
-                   FROM student_payments 
-                   JOIN student_registration ON student_payments.student_registration_id = student_registration.id''')
-    rows = cur.fetchall()
-    return rows
-
 def insert_registration_record(conn, record):
     sql = '''INSERT INTO student_registration(client_name, outstanding_document, assigned_to, application_date, institution_applied_to, status, decision, remarks, doc_file)
              VALUES(?,?,?,?,?,?,?,?,?)'''
@@ -184,6 +174,12 @@ def insert_payment_record(conn, record):
     cur.execute(sql, record)
     conn.commit()
 
+def fetch_all_payment_records(conn):
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM student_payments")
+    rows = cur.fetchall()
+    return rows
+
 def delete_payment_record(conn, record_id):
     sql = '''DELETE FROM student_payments WHERE id=?'''
     cur = conn.cursor()
@@ -199,7 +195,7 @@ def update_payment_record(conn, record):
     conn.commit()
 
 def main():
-    st.title("Victory Information Management System")
+    st.title("SIKA Manager")
 
     db_path = 'sika_manager.db'
     conn = create_connection(db_path)
@@ -292,9 +288,29 @@ def main():
 
         with tabs[1]:
             st.header('Payments')
-            payment_records = fetch_payment_records_with_client_names(conn)
+            student_ids = [row[0] for row in fetch_all_registration_records(conn)]
+            selected_id = st.selectbox('Select Student Registration ID to Add Payment', student_ids)
+            if selected_id:
+                with st.form("payment_form"):
+                    requested_service = st.text_input("Requested Service")
+                    quantity = st.number_input("Quantity", min_value=1, step=1)
+                    amount = st.number_input("Amount", min_value=0.0, step=0.01)
+                    cost = st.number_input("Cost", min_value=0.0, step=0.01)
+                    currency = st.selectbox("Currency", ["Ghc", "USD", "EUR", "GBP"])
+                    date = st.date_input("Date")
+                    balance_due = st.number_input("Balance Due", min_value=0.0, step=0.01)
+                    submit_payment = st.form_submit_button(label="Add Payment Record")
+
+                    if submit_payment:
+                        payment_record = (selected_id, requested_service, quantity, amount, cost, currency, date.strftime('%Y-%m-%d'), balance_due)
+                        insert_payment_record(conn, payment_record)
+                        st.success("Payment record added successfully!")
+                        st.experimental_rerun()
+
+            st.subheader("Payment Records")
+            payment_records = fetch_all_payment_records(conn)
             if payment_records:
-                columns = ['ID', 'Client Name', 'Student Registration ID', 'Requested Service', 'Quantity', 'Amount', 'Cost', 'Currency', 'Date']
+                columns = ['ID', 'Student Registration ID', 'Requested Service', 'Quantity', 'Amount', 'Cost', 'Currency', 'Date', 'Balance Due']
                 df = pd.DataFrame(payment_records, columns=columns)
                 st.dataframe(df)
 
@@ -307,7 +323,6 @@ def main():
 
                 if st.button("Edit Payment"):
                     payment = df[df['ID'] == selected_payment_id].iloc[0]
-                    student_ids = [row[0] for row in fetch_all_registration_records(conn)]
                     with st.form(f"edit_payment_form_{selected_payment_id}"):
                         student_registration_id = st.selectbox('Select Student Registration ID', student_ids, index=student_ids.index(payment['Student Registration ID']))
                         requested_service = st.text_input("Requested Service", value=payment['Requested Service'])
