@@ -7,6 +7,12 @@ import matplotlib.pyplot as plt
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import time
+
+# Function to trigger rerun
+def trigger_rerun():
+    st.session_state['rerun_trigger'] = not st.session_state.get('rerun_trigger', False)
+    time.sleep(1)
 
 # Database connection function
 def create_connection(db_file):
@@ -212,7 +218,7 @@ def main():
                 st.session_state['username'] = user
                 st.session_state['role'] = role
                 st.success(f"Welcome {user}!")
-                st.experimental_rerun()
+                trigger_rerun()
             else:
                 st.error("Incorrect username or password")
     else:
@@ -221,7 +227,7 @@ def main():
         if logout_button:
             del st.session_state['username']
             del st.session_state['role']
-            st.experimental_rerun()
+            trigger_rerun()
 
         tab_titles = ["Student Registration", "Payments", "Summary & Visualization", "Chat", "Email"]
         if st.session_state['role'] == 'admin':
@@ -248,7 +254,7 @@ def main():
                     record = (client_name, outstanding_document, assigned_to, application_date.strftime('%Y-%m-%d'), institution_applied_to, status, decision, remarks, doc_file_content)
                     insert_registration_record(conn, record)
                     st.success("Student registered successfully!")
-                    st.experimental_rerun()
+                    trigger_rerun()
 
             st.subheader("Registered Students")
             records = fetch_all_registration_records(conn)
@@ -262,11 +268,12 @@ def main():
                 if st.button("Delete Record"):
                     delete_registration_record(conn, selected_id)
                     st.success("Record deleted successfully!")
-                    st.experimental_rerun()
+                    trigger_rerun()
 
                 if st.button("Edit Record"):
                     record = df[df['ID'] == selected_id].iloc[0]
                     with st.form(f"edit_form_{selected_id}"):
+
                         client_name = st.text_input("Client Name", value=record['Client Name'])
                         outstanding_document = st.text_input("Outstanding Document", value=record['Outstanding Document'])
                         assigned_to = st.text_input("Assigned To", value=record['Assigned To'])
@@ -280,7 +287,7 @@ def main():
                         if submit_edit:
                             update_registration_record(conn, (client_name, outstanding_document, assigned_to, application_date.strftime('%Y-%m-%d'), institution_applied_to, status, decision, remarks, selected_id))
                             st.success("Record updated successfully!")
-                            st.experimental_rerun()
+                            trigger_rerun()
 
         with tabs[1]:
             st.header('Payments')
@@ -301,7 +308,7 @@ def main():
                         payment_record = (selected_id, requested_service, quantity, amount, cost, currency, date.strftime('%Y-%m-%d'), balance_due)
                         insert_payment_record(conn, payment_record)
                         st.success("Payment record added successfully!")
-                        st.experimental_rerun()
+                        trigger_rerun()
 
             st.subheader("Payment Records")
             payment_records = fetch_all_payment_records(conn)
@@ -315,7 +322,7 @@ def main():
                 if st.button("Delete Payment"):
                     delete_payment_record(conn, selected_payment_id)
                     st.success("Payment deleted successfully!")
-                    st.experimental_rerun()
+                    trigger_rerun()
 
                 if st.button("Edit Payment"):
                     payment = df[df['ID'] == selected_payment_id].iloc[0]
@@ -333,7 +340,7 @@ def main():
                         if submit_edit:
                             update_payment_record(conn, (student_registration_id, requested_service, quantity, amount, cost, currency, date.strftime('%Y-%m-%d'), balance_due, selected_payment_id))
                             st.success("Payment record updated successfully!")
-                            st.experimental_rerun()
+                            trigger_rerun()
 
         with tabs[2]:
             st.header('Summary Statistics and Visualization')
@@ -356,7 +363,7 @@ def main():
             message = st.text_area('Message')
             if st.button('Send'):
                 insert_chat_message(conn, user, message)
-                st.experimental_rerun()
+                trigger_rerun()
 
             st.subheader('Chat Messages')
             chat_messages = fetch_chat_messages(conn)
@@ -387,7 +394,7 @@ def main():
                         try:
                             insert_user(conn, new_username, new_password, new_role)
                             st.success("New user added successfully!")
-                            st.experimental_rerun()
+                            trigger_rerun()
                         except sqlite3.IntegrityError:
                             st.error("Username already exists!")
 
