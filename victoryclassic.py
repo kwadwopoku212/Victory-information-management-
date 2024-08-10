@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import os
+import time
 
 # Utility functions
 def hash_password(password):
@@ -15,6 +15,12 @@ def hash_password(password):
 
 def verify_password(password, hashed):
     return pbkdf2_sha256.verify(password, hashed)
+
+def validate_email(email):
+    if '@' not in email or '.' not in email.split('@')[1]:
+        st.error("Invalid email format")
+        return False
+    return True
 
 def create_connection(db_file):
     conn = None
@@ -27,17 +33,11 @@ def create_connection(db_file):
 def create_tables(conn):
     try:
         cursor = conn.cursor()
-        
-        # Create users table
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (
                             id INTEGER PRIMARY KEY,
                             username TEXT UNIQUE NOT NULL,
                             password TEXT NOT NULL,
-                            email TEXT DEFAULT '',
-                            role TEXT NOT NULL,
-                            status TEXT DEFAULT 'active')''')
-
-        # Create other necessary tables
+                            role TEXT NOT NULL)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS student_registration (
                             id INTEGER PRIMARY KEY,
                             client_name TEXT NOT NULL,
@@ -49,7 +49,6 @@ def create_tables(conn):
                             decision TEXT,
                             remarks TEXT,
                             doc_file BLOB)''')
-
         cursor.execute('''CREATE TABLE IF NOT EXISTS student_payments (
                             id INTEGER PRIMARY KEY,
                             student_registration_id INTEGER,
@@ -61,100 +60,85 @@ def create_tables(conn):
                             date TEXT,
                             balance_due REAL,
                             FOREIGN KEY (student_registration_id) REFERENCES student_registration (id))''')
-
         cursor.execute('''CREATE TABLE IF NOT EXISTS chat (
                             id INTEGER PRIMARY KEY,
                             user TEXT NOT NULL,
                             message TEXT NOT NULL,
-                            timestamp TEXT NOT NULL,
-                            attachment TEXT)''')
-
+                            timestamp TEXT NOT NULL)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS email_history (
                             id INTEGER PRIMARY KEY,
-                            recipient TEXT,
-                            cc TEXT,
-                            bcc TEXT,
-                            subject TEXT,
-                            message TEXT,
-                            timestamp TEXT)''')
-
-        cursor.execute('''CREATE TABLE IF NOT EXISTS user_permissions (
-                            user_id INTEGER,
-                            registration_access INTEGER,
-                            payment_access INTEGER,
-                            summary_access INTEGER,
-                            chat_access INTEGER,
-                            email_access INTEGER,
-                            FOREIGN KEY (user_id) REFERENCES users (id))''')
-        
+                            recipient TEXT NOT NULL,
+                            subject TEXT NOT NULL,
+                            message TEXT NOT NULL,
+                            timestamp TEXT NOT NULL)''')
         conn.commit()
     except sqlite3.Error as e:
         st.error("Error creating tables: " + str(e))
 
-def alter_chat_table(conn):
-    try:
-        cursor = conn.cursor()
-        cursor.execute('ALTER TABLE chat ADD COLUMN attachment TEXT')
-        conn.commit()
-    except sqlite3.Error as e:
-        if "duplicate column name" not in str(e):
-            st.error("Error altering chat table: " + str(e))
-
-# Authentication functions
-def insert_user(conn, username, password, email, role, status="active"):
+def insert_user(conn, username, password, role):
     cur = conn.cursor()
-    sql = 'INSERT INTO users (username, password, email, role, status) VALUES (?, ?, ?, ?, ?)'
-    cur.execute(sql, (username, hash_password(password), email, role, status))
-    user_id = cur.lastrowid
-    cur.execute('INSERT INTO user_permissions (user_id, registration_access, payment_access, summary_access, chat_access, email_access) VALUES (?, ?, ?, ?, ?, ?)',
-                (user_id, 1, 1, 1, 1, 1))  # By default, give full access
+    sql = 'INSERT INTO users (username, password, role) VALUES (?, ?, ?)'
+    cur.execute(sql, (username, hash_password(password), role))
     conn.commit()
 
 def check_credentials(conn, username, password):
     cur = conn.cursor()
-    cur.execute('SELECT username, password, role, status FROM users WHERE username = ?', (username,))
+    cur.execute('SELECT username, password, role FROM users WHERE username = ?', (username,))
     user = cur.fetchone()
     if user and verify_password(password, user[1]):
-        return user[0], user[2], user[3]  # Returning username, role, and status
-    return None, None, None
+        return user[0], user[2]
+    return None, None
 
 def fetch_all_users(conn):
     cur = conn.cursor()
-    cur.execute("SELECT id, username, email, role, status FROM users")
+    cur.execute("SELECT username, role FROM users")
     rows = cur.fetchall()
     return rows
 
-def fetch_user_permissions(conn, user_id):
+def insert_chat_message(conn, user, message):
+    sql = '''INSERT INTO chat(user, message, timestamp) VALUES(?,?,?)'''
     cur = conn.cursor()
-    cur.execute("SELECT registration_access, payment_access, summary_access, chat_access, email_access FROM user_permissions WHERE user_id = ?", (user_id,))
-    return cur.fetchone()
-
-def update_user_status(conn, user_id, status):
-    cur = conn.cursor()
-    cur.execute("UPDATE users SET status = ? WHERE id = ?", (status, user_id))
+    cur.execute(sql, (user, message, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
     conn.commit()
 
-def update_user_permissions(conn, user_id, permissions):
+def fetch_chat_messages(conn):
     cur = conn.cursor()
-    sql = '''UPDATE user_permissions
-             SET registration_access=?, payment_access=?, summary_access=?, chat_access=?, email_access=?
-             WHERE user_id=?'''
-    cur.execute(sql, (*permissions, user_id))
-    conn.commit()
+    cur.execute("SELECT * FROM chat ORDER BY timestamp DESC")
+    rows = cur.fetchall()
+    return rows
 
-def delete_user(conn, user_id):
-    cur = conn.cursor()
-    cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
-    cur.execute("DELETE FROM user_permissions WHERE user_id = ?", (user_id,))
-    conn.commit()
+def send_email(conn, to, subject, message):
+    if not validate_email(to):
+        return
+    
+    sender_email = "your_email@gmail.com"  # Replace with your email
+    sender_password = "your_app_password"  # Replace with your app password
 
-# Student Registration Functions
-def insert_registration_record(conn, record):
-    sql = '''INSERT INTO student_registration(client_name, outstanding_document, assigned_to, application_date, institution_applied_to, status, decision, remarks, doc_file)
-             VALUES(?,?,?,?,?,?,?,?,?)'''
-    cur = conn.cursor()
-    cur.execute(sql, record)
-    conn.commit()
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = to
+    msg['Subject'] = subject
+
+    msg.attach(MIMEText(message, 'plain'))
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        text = msg.as_string()
+        server.sendmail(sender_email, to, text)
+        server.quit()
+
+        st.success(f"Email sent to {to} with subject '{subject}'")
+
+        # Log email to history
+        cur = conn.cursor()
+        sql = '''INSERT INTO email_history(recipient, subject, message, timestamp) VALUES(?,?,?,?)'''
+        cur.execute(sql, (to, subject, message, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        conn.commit()
+
+    except Exception as e:
+        st.error(f"Failed to send email: {str(e)}")
 
 def fetch_all_registration_records(conn):
     cur = conn.cursor()
@@ -162,10 +146,19 @@ def fetch_all_registration_records(conn):
     rows = cur.fetchall()
     return rows
 
-def update_registration_record(conn, record):
-    sql = '''UPDATE student_registration
-             SET client_name=?, outstanding_document=?, assigned_to=?, application_date=?, institution_applied_to=?, status=?, decision=?, remarks=?
-             WHERE id=?'''
+def fetch_payment_records_with_client_names(conn):
+    cur = conn.cursor()
+    cur.execute('''SELECT student_payments.id, student_registration.client_name, student_payments.student_registration_id, 
+                          student_payments.requested_service, student_payments.quantity, student_payments.amount, 
+                          student_payments.cost, student_payments.currency, student_payments.date 
+                   FROM student_payments 
+                   JOIN student_registration ON student_payments.student_registration_id = student_registration.id''')
+    rows = cur.fetchall()
+    return rows
+
+def insert_registration_record(conn, record):
+    sql = '''INSERT INTO student_registration(client_name, outstanding_document, assigned_to, application_date, institution_applied_to, status, decision, remarks, doc_file)
+             VALUES(?,?,?,?,?,?,?,?,?)'''
     cur = conn.cursor()
     cur.execute(sql, record)
     conn.commit()
@@ -176,32 +169,17 @@ def delete_registration_record(conn, record_id):
     cur.execute(sql, (record_id,))
     conn.commit()
 
-# Payment Functions
-def insert_payment_record(conn, record):
-    sql = '''INSERT INTO student_payments(student_registration_id, requested_service, quantity, amount, cost, currency, date, balance_due)
-             VALUES(?,?,?,?,?,?,?,?)'''
+def update_registration_record(conn, record):
+    sql = '''UPDATE student_registration
+             SET client_name=?, outstanding_document=?, assigned_to=?, application_date=?, institution_applied_to=?, status=?, decision=?, remarks=?
+             WHERE id=?'''
     cur = conn.cursor()
     cur.execute(sql, record)
     conn.commit()
 
-def fetch_all_payment_records(conn):
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM student_payments")
-    rows = cur.fetchall()
-    return rows
-
-def fetch_payment_records_with_client_names(conn):
-    cur = conn.cursor()
-    cur.execute('''SELECT sp.id, sr.client_name, sp.student_registration_id, sp.requested_service, sp.quantity, sp.amount, sp.cost, sp.currency, sp.date
-                   FROM student_payments sp
-                   JOIN student_registration sr ON sp.student_registration_id = sr.id''')
-    rows = cur.fetchall()
-    return rows
-
-def update_payment_record(conn, record):
-    sql = '''UPDATE student_payments
-             SET student_registration_id=?, requested_service=?, quantity=?, amount=?, cost=?, currency=?, date=?, balance_due=?
-             WHERE id=?'''
+def insert_payment_record(conn, record):
+    sql = '''INSERT INTO student_payments(student_registration_id, requested_service, quantity, amount, cost, currency, date, balance_due)
+             VALUES(?,?,?,?,?,?,?,?)'''
     cur = conn.cursor()
     cur.execute(sql, record)
     conn.commit()
@@ -212,80 +190,23 @@ def delete_payment_record(conn, record_id):
     cur.execute(sql, (record_id,))
     conn.commit()
 
-# Chat Functions
-def insert_chat_message(conn, user, message, attachment=None):
-    sql = '''INSERT INTO chat(user, message, timestamp, attachment) VALUES(?,?,?,?)'''
+def update_payment_record(conn, record):
+    sql = '''UPDATE student_payments
+             SET student_registration_id=?, requested_service=?, quantity=?, amount=?, cost=?, currency=?, date=?, balance_due=?
+             WHERE id=?'''
     cur = conn.cursor()
-    cur.execute(sql, (user, message, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), attachment))
+    cur.execute(sql, record)
     conn.commit()
 
-def fetch_chat_messages(conn, contact):
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM chat WHERE user=? ORDER BY timestamp DESC", (contact,))
-    rows = cur.fetchall()
-    return rows
-
-def format_timestamp(timestamp):
-    try:
-        dt_object = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
-        return dt_object.strftime('%b %d, %Y %I:%M %p')
-    except ValueError:
-        return timestamp
-
-# Email Functions
-def send_email(recipient, cc, bcc, subject, message, attachments=[]):
-    sender_email = "your_email@gmail.com"  # Replace with your email
-    sender_password = "your_app_password"  # Replace with your app password
-
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['To'] = recipient
-    msg['Cc'] = cc
-    msg['Bcc'] = bcc
-    msg['Subject'] = subject
-
-    msg.attach(MIMEText(message, 'html'))
-
-    for attachment in attachments:
-        msg.attach(attachment)
-
-    try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(sender_email, sender_password)
-        text = msg.as_string()
-        server.sendmail(sender_email, recipient.split(",") + cc.split(",") + bcc.split(","), text)
-        server.quit()
-        st.success(f"Email sent to {recipient} with subject '{subject}'")
-    except Exception as e:
-        st.error(f"Failed to send email: {str(e)}")
-
-def insert_email_history(conn, recipient, cc, bcc, subject, message):
-    sql = '''INSERT INTO email_history(recipient, cc, bcc, subject, message, timestamp)
-             VALUES(?,?,?,?,?,?)'''
-    cur = conn.cursor()
-    cur.execute(sql, (recipient, cc, bcc, subject, message, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-    conn.commit()
-
-def fetch_email_history(conn):
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM email_history ORDER BY timestamp DESC")
-    rows = cur.fetchall()
-    return rows
-
-# Main Application Function
-# Main Application Function
 def main():
-    st.set_page_config(layout="wide")
     st.title("Victory Information Management System")
 
     db_path = 'sika_manager.db'
     conn = create_connection(db_path)
     create_tables(conn)
-    alter_chat_table(conn)  # Ensure the chat table has the 'attachment' column
 
     if conn.execute('SELECT * FROM users WHERE username = "admin"').fetchone() is None:
-        insert_user(conn, 'admin', 'admin123', 'admin@example.com', 'admin')
+        insert_user(conn, 'admin', 'admin123', 'admin')
 
     if 'username' not in st.session_state:
         st.sidebar.title("Login")
@@ -294,16 +215,12 @@ def main():
         login_button = st.sidebar.button("Login")
 
         if login_button:
-            user, role, status = check_credentials(conn, username, password)
+            user, role = check_credentials(conn, username, password)
             if user:
-                if status == "suspended":
-                    st.error("Your account is suspended. Please contact the admin.")
-                else:
-                    st.session_state['username'] = user
-                    st.session_state['role'] = role
-                    st.success(f"Welcome {user}!")
-                    # Use st.experimental_set_query_params to simulate a rerun
-                    st.experimental_set_query_params()
+                st.session_state['username'] = user
+                st.session_state['role'] = role
+                st.success(f"Welcome {user}!")
+                st.experimental_rerun()
             else:
                 st.error("Incorrect username or password")
     else:
@@ -312,7 +229,7 @@ def main():
         if logout_button:
             del st.session_state['username']
             del st.session_state['role']
-            st.experimental_set_query_params()
+            st.experimental_rerun()
 
         tab_titles = ["Student Registration", "Payments", "Summary & Visualization", "Chat", "Email"]
         if st.session_state['role'] == 'admin':
@@ -320,38 +237,6 @@ def main():
 
         tabs = st.tabs(tab_titles)
 
-        # Student Registration Tab
-        with tabs[0]:
-            st.header("Student Registration")
-            # (Your registration code here)
-
-        # Payments Tab
-        with tabs[1]:
-            st.header('Payments')
-            # (Your payments code here)
-
-        # Summary & Visualization Tab
-        with tabs[2]:
-            st.header('Summary Statistics and Visualization')
-            # (Your summary code here)
-
-        # Chat Tab
-        with tabs[3]:
-            st.header('Chat')
-            # (Your chat code here)
-
-        # Email Tab
-        with tabs[4]:
-            st.header("Send Email")
-            # (Your email code here)
-
-        # Manage Users Tab (Admin only)
-        if st.session_state['role'] == 'admin':
-            with tabs[5]:
-                st.header("Manage Users")
-                # (Your user management code here)
-
-        # Student Registration Tab
         with tabs[0]:
             st.header("Student Registration")
             with st.form("student_registration_form"):
@@ -405,62 +290,40 @@ def main():
                             st.success("Record updated successfully!")
                             st.experimental_rerun()
 
-        # Payments Tab
         with tabs[1]:
             st.header('Payments')
-            student_ids = [row[0] for row in fetch_all_registration_records(conn)]
-            if student_ids:
-                selected_id = st.selectbox('Select Student Registration ID to Add Payment', student_ids)
-                if selected_id:
-                    with st.form("payment_form"):
-                        requested_service = st.text_input("Requested Service")
-                        quantity = st.number_input("Quantity", min_value=1, step=1)
-                        amount = st.number_input("Amount", min_value=0.0, step=0.01)
-                        cost = st.number_input("Cost", min_value=0.0, step=0.01)
-                        currency = st.selectbox("Currency", ["Ghc", "USD", "EUR", "GBP"])
-                        date = st.date_input("Date")
-                        balance_due = st.number_input("Balance Due", min_value=0.0, step=0.01)
-                        submit_payment = st.form_submit_button(label="Add Payment Record")
+            payment_records = fetch_payment_records_with_client_names(conn)
+            if payment_records:
+                columns = ['ID', 'Client Name', 'Student Registration ID', 'Requested Service', 'Quantity', 'Amount', 'Cost', 'Currency', 'Date']
+                df = pd.DataFrame(payment_records, columns=columns)
+                st.dataframe(df)
 
-                        if submit_payment:
-                            payment_record = (selected_id, requested_service, quantity, amount, cost, currency, date.strftime('%Y-%m-%d'), balance_due)
-                            insert_payment_record(conn, payment_record)
-                            st.success("Payment record added successfully!")
+                st.subheader("Edit/Delete Payment")
+                selected_payment_id = st.selectbox("Select Payment ID to Edit/Delete", df['ID'])
+                if st.button("Delete Payment"):
+                    delete_payment_record(conn, selected_payment_id)
+                    st.success("Payment deleted successfully!")
+                    st.experimental_rerun()
+
+                if st.button("Edit Payment"):
+                    payment = df[df['ID'] == selected_payment_id].iloc[0]
+                    student_ids = [row[0] for row in fetch_all_registration_records(conn)]
+                    with st.form(f"edit_payment_form_{selected_payment_id}"):
+                        student_registration_id = st.selectbox('Select Student Registration ID', student_ids, index=student_ids.index(payment['Student Registration ID']))
+                        requested_service = st.text_input("Requested Service", value=payment['Requested Service'])
+                        quantity = st.number_input("Quantity", min_value=1, step=1, value=payment['Quantity'])
+                        amount = st.number_input("Amount", min_value=0.0, step=0.01, value=payment['Amount'])
+                        cost = st.number_input("Cost", min_value=0.0, step=0.01, value=payment['Cost'])
+                        currency = st.selectbox("Currency", ["Ghc", "USD", "EUR", "GBP"], index=["Ghc", "USD", "EUR", "GBP"].index(payment['Currency']))
+                        date = st.date_input("Date", value=datetime.strptime(payment['Date'], '%Y-%m-%d'))
+                        balance_due = st.number_input("Balance Due", min_value=0.0, step=0.01, value=payment['Balance Due'])
+                        submit_edit = st.form_submit_button(label="Update Payment Record")
+
+                        if submit_edit:
+                            update_payment_record(conn, (student_registration_id, requested_service, quantity, amount, cost, currency, date.strftime('%Y-%m-%d'), balance_due, selected_payment_id))
+                            st.success("Payment record updated successfully!")
                             st.experimental_rerun()
 
-                st.subheader("Payment Records")
-                payment_records = fetch_payment_records_with_client_names(conn)
-                if payment_records:
-                    columns = ['ID', 'Client Name', 'Student Registration ID', 'Requested Service', 'Quantity', 'Amount', 'Cost', 'Currency', 'Date']
-                    df = pd.DataFrame(payment_records, columns=columns)
-                    st.dataframe(df)
-
-                    st.subheader("Edit/Delete Payment")
-                    selected_payment_id = st.selectbox("Select Payment ID to Edit/Delete", df['ID'])
-                    if st.button("Delete Payment"):
-                        delete_payment_record(conn, selected_payment_id)
-                        st.success("Payment deleted successfully!")
-                        st.experimental_rerun()
-
-                    if st.button("Edit Payment"):
-                        payment = df[df['ID'] == selected_payment_id].iloc[0]
-                        with st.form(f"edit_payment_form_{selected_payment_id}"):
-                            student_registration_id = st.selectbox('Select Student Registration ID', student_ids, index=student_ids.index(payment['Student Registration ID']))
-                            requested_service = st.text_input("Requested Service", value=payment['Requested Service'])
-                            quantity = st.number_input("Quantity", min_value=1, step=1, value=payment['Quantity'])
-                            amount = st.number_input("Amount", min_value=0.0, step=0.01, value=payment['Amount'])
-                            cost = st.number_input("Cost", min_value=0.0, step=0.01, value=payment['Cost'])
-                            currency = st.selectbox("Currency", ["Ghc", "USD", "EUR", "GBP"], index=["Ghc", "USD", "EUR", "GBP"].index(payment['Currency']))
-                            date = st.date_input("Date", value=datetime.strptime(payment['Date'], '%Y-%m-%d'))
-                            balance_due = st.number_input("Balance Due", min_value=0.0, step=0.01, value=payment['Balance Due'])
-                            submit_edit = st.form_submit_button(label="Update Payment Record")
-
-                            if submit_edit:
-                                update_payment_record(conn, (student_registration_id, requested_service, quantity, amount, cost, currency, date.strftime('%Y-%m-%d'), balance_due, selected_payment_id))
-                                st.success("Payment record updated successfully!")
-                                st.experimental_rerun()
-
-        # Summary & Visualization Tab
         with tabs[2]:
             st.header('Summary Statistics and Visualization')
             summary_statistics = conn.execute("SELECT currency, SUM(amount), SUM(balance_due) FROM student_payments GROUP BY currency").fetchall()
@@ -475,132 +338,68 @@ def main():
                 ax.bar(currency_data, amount_data)
                 st.pyplot(fig)
 
-        # Chat Tab
         with tabs[3]:
             st.header('Chat')
             st.subheader('Send a Message')
-            user = st.selectbox('User', [row[1] for row in fetch_all_users(conn)])
+            user = st.selectbox('User', [row[0] for row in fetch_all_users(conn)])
             message = st.text_area('Message')
-            attachment = st.file_uploader("Attach a file", type=["jpg", "jpeg", "png", "pdf", "docx", "xlsx", "pptx"], accept_multiple_files=False)
             if st.button('Send'):
-                attachment_path = None
-                if attachment:
-                    os.makedirs("uploads", exist_ok=True)
-                    attachment_path = os.path.join("uploads", attachment.name)
-                    with open(attachment_path, "wb") as f:
-                        f.write(attachment.read())
-                insert_chat_message(conn, user, message, attachment_path)
+                insert_chat_message(conn, user, message)
                 st.experimental_rerun()
 
-            st.subheader('Chat History')
-            contact = st.selectbox("Select Contact", [row[1] for row in fetch_all_users(conn)])
-            chat_messages = fetch_chat_messages(conn, contact)
-            if chat_messages:
-                for chat in chat_messages:
-                    timestamp = format_timestamp(chat[3])
-                    st.write(f"{timestamp} - {chat[1]}: {chat[2]}")
-                    if chat[4]:
-                        st.write(f"Attachment: {chat[4]}")
+            st.subheader('Chat Messages')
+            chat_messages = fetch_chat_messages(conn)
+            for chat in chat_messages:
+                st.write(f"{chat[3]} - {chat[1]}: {chat[2]}")
+
+            # Add an auto-refresh option
             refresh_rate = st.slider('Refresh rate (seconds)', 1, 30, 5)
             if st.button('Start Auto-Refresh'):
-                time.sleep(refresh_rate)
-                st.experimental_rerun()
+                while True:
+                    st.experimental_rerun()
+                    time.sleep(refresh_rate)
 
-        # Email Tab
         with tabs[4]:
             st.header("Send Email")
             with st.form("email_form"):
                 recipient = st.text_input("Recipient Email")
-                cc = st.text_input("CC")
-                bcc = st.text_input("BCC")
                 subject = st.text_input("Subject")
                 email_message = st.text_area("Message")
-                attachments = st.file_uploader("Attach files", type=["jpg", "jpeg", "png", "pdf", "docx", "xlsx", "pptx"], accept_multiple_files=True)
                 send_email_button = st.form_submit_button("Send Email")
 
                 if send_email_button:
-                    attachment_files = []
-                    for attachment in attachments:
-                        part = MIMEText(attachment.read(), 'base64', 'utf-8')
-                        part["Content-Disposition"] = f'attachment; filename="{attachment.name}"'
-                        attachment_files.append(part)
-                    send_email(recipient, cc, bcc, subject, email_message, attachment_files)
-                    insert_email_history(conn, recipient, cc, bcc, subject, email_message)
+                    send_email(conn, recipient, subject, email_message)
 
-            st.subheader('Email History')
-            email_history = fetch_email_history(conn)
+            st.subheader("Email History")
+            email_history = conn.execute("SELECT * FROM email_history ORDER BY timestamp DESC").fetchall()
             if email_history:
-                for email in email_history:
-                    timestamp = format_timestamp(email[6])
-                    st.write(f"{timestamp} - To: {email[1]}, CC: {email[2]}, BCC: {email[3]}, Subject: {email[4]}, Message: {email[5]}")
+                columns = ['ID', 'Recipient', 'Subject', 'Message', 'Timestamp']
+                df = pd.DataFrame(email_history, columns=columns)
+                st.dataframe(df)
 
-        # Manage Users Tab (Admin only)
         if st.session_state['role'] == 'admin':
             with tabs[5]:
                 st.header("Manage Users")
-                
-                # Create New User
                 with st.form("user_management_form"):
                     new_username = st.text_input("New Username")
                     new_password = st.text_input("New Password", type="password")
-                    new_email = st.text_input("Email Address")
                     new_role = st.selectbox("Role", ["admin", "worker"])
                     add_user_button = st.form_submit_button(label="Add User")
 
                     if add_user_button:
                         try:
-                            insert_user(conn, new_username, new_password, new_email, new_role)
+                            insert_user(conn, new_username, new_password, new_role)
                             st.success("New user added successfully!")
                             st.experimental_rerun()
                         except sqlite3.IntegrityError:
                             st.error("Username already exists!")
 
-                # Display User List
                 st.subheader("User List")
                 user_records = fetch_all_users(conn)
                 if user_records:
-                    columns = ['ID', 'Username', 'Email', 'Role', 'Status']
+                    columns = ['Username', 'Role']
                     df = pd.DataFrame(user_records, columns=columns)
                     st.dataframe(df)
-
-                    selected_user_id = st.selectbox("Select User ID to Edit/Delete/Suspend", df['ID'])
-
-                    if selected_user_id:
-                        selected_user = df[df['ID'] == selected_user_id].iloc[0]
-                        
-                        # Suspend User
-                        if st.button(f"Suspend {selected_user['Username']}"):
-                            update_user_status(conn, selected_user_id, "suspended")
-                            st.success(f"User {selected_user['Username']} suspended.")
-                            st.experimental_rerun()
-
-                        # Reactivate User
-                        if st.button(f"Reactivate {selected_user['Username']}"):
-                            update_user_status(conn, selected_user_id, "active")
-                            st.success(f"User {selected_user['Username']} reactivated.")
-                            st.experimental_rerun()
-
-                        # Delete User
-                        if st.button(f"Delete {selected_user['Username']}"):
-                            delete_user(conn, selected_user_id)
-                            st.success(f"User {selected_user['Username']} deleted.")
-                            st.experimental_rerun()
-
-                        # Update User Permissions
-                        st.subheader("Update User Permissions")
-                        user_permissions = fetch_user_permissions(conn, selected_user_id)
-                        if user_permissions:
-                            registration_access = st.checkbox("Access Registration", value=user_permissions[0])
-                            payment_access = st.checkbox("Access Payments", value=user_permissions[1])
-                            summary_access = st.checkbox("Access Summary", value=user_permissions[2])
-                            chat_access = st.checkbox("Access Chat", value=user_permissions[3])
-                            email_access = st.checkbox("Access Email", value=user_permissions[4])
-
-                            if st.button("Update Permissions"):
-                                permissions = (registration_access, payment_access, summary_access, chat_access, email_access)
-                                update_user_permissions(conn, selected_user_id, permissions)
-                                st.success("Permissions updated successfully!")
-                                st.experimental_rerun()
 
 if __name__ == '__main__':
     main()
