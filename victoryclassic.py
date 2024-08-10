@@ -273,7 +273,6 @@ def main():
                 if st.button("Edit Record"):
                     record = df[df['ID'] == selected_id].iloc[0]
                     with st.form(f"edit_form_{selected_id}"):
-
                         client_name = st.text_input("Client Name", value=record['Client Name'])
                         outstanding_document = st.text_input("Outstanding Document", value=record['Outstanding Document'])
                         assigned_to = st.text_input("Assigned To", value=record['Assigned To'])
