@@ -323,7 +323,7 @@ if st.session_state['logged_in']:
         st.session_state['logged_in'] = False
         st.session_state['username'] = ""
         st.session_state['role'] = ""
-            else:
+else:
                 st.error("Incorrect username or password")
     else:
         st.sidebar.write(f"Logged in as: {st.session_state['username']} ({st.session_state['role']})")
