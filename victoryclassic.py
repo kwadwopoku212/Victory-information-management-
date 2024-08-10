@@ -352,7 +352,7 @@ def main():
                 if st.button("Delete Record"):
                     delete_registration_record(conn, selected_id)
                     st.success("Record deleted successfully!")
-                    st.experimental_rerun()
+                    st.rerun()
 
                 if st.button("Edit Record"):
                     record = df[df['ID'] == selected_id].iloc[0]
