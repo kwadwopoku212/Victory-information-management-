@@ -7,21 +7,8 @@ import matplotlib.pyplot as plt
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import time
 
-# Utility functions
-def hash_password(password):
-    return pbkdf2_sha256.hash(password)
-
-def verify_password(password, hashed):
-    return pbkdf2_sha256.verify(password, hashed)
-
-def validate_email(email):
-    if '@' not in email or '.' not in email.split('@')[1]:
-        st.error("Invalid email format")
-        return False
-    return True
-
+# Database connection function
 def create_connection(db_file):
     conn = None
     try:
@@ -30,6 +17,7 @@ def create_connection(db_file):
         st.error("Error connecting to database: " + str(e))
     return conn
 
+# Create necessary tables
 def create_tables(conn):
     try:
         cursor = conn.cursor()
@@ -65,15 +53,26 @@ def create_tables(conn):
                             user TEXT NOT NULL,
                             message TEXT NOT NULL,
                             timestamp TEXT NOT NULL)''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS email_history (
-                            id INTEGER PRIMARY KEY,
-                            recipient TEXT NOT NULL,
-                            subject TEXT NOT NULL,
-                            message TEXT NOT NULL,
-                            timestamp TEXT NOT NULL)''')
         conn.commit()
     except sqlite3.Error as e:
         st.error("Error creating tables: " + str(e))
+
+# Alter tables to add new columns if needed
+def alter_table(conn):
+    try:
+        cursor = conn.cursor()
+        cursor.execute('ALTER TABLE student_payments ADD COLUMN balance_due REAL')
+        conn.commit()
+    except sqlite3.Error as e:
+        if "duplicate column name" not in str(e):
+            st.error("Error altering table: " + str(e))
+
+# Authentication functions
+def hash_password(password):
+    return pbkdf2_sha256.hash(password)
+
+def verify_password(password, hashed):
+    return pbkdf2_sha256.verify(password, hashed)
 
 def insert_user(conn, username, password, role):
     cur = conn.cursor()
@@ -95,6 +94,7 @@ def fetch_all_users(conn):
     rows = cur.fetchall()
     return rows
 
+# Chat functions
 def insert_chat_message(conn, user, message):
     sql = '''INSERT INTO chat(user, message, timestamp) VALUES(?,?,?)'''
     cur = conn.cursor()
@@ -107,62 +107,10 @@ def fetch_chat_messages(conn):
     rows = cur.fetchall()
     return rows
 
-def send_email(conn, to, subject, message):
-    if not validate_email(to):
-        return
-    
-    sender_email = "your_email@gmail.com"  # Replace with your email
-    sender_password = "your_app_password"  # Replace with your app password
-
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['To'] = to
-    msg['Subject'] = subject
-
-    msg.attach(MIMEText(message, 'plain'))
-
-    try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(sender_email, sender_password)
-        text = msg.as_string()
-        server.sendmail(sender_email, to, text)
-        server.quit()
-
-        st.success(f"Email sent to {to} with subject '{subject}'")
-
-        # Log email to history
-        cur = conn.cursor()
-        sql = '''INSERT INTO email_history(recipient, subject, message, timestamp) VALUES(?,?,?,?)'''
-        cur.execute(sql, (to, subject, message, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-        conn.commit()
-
-    except Exception as e:
-        st.error(f"Failed to send email: {str(e)}")
-
-def fetch_all_registration_records(conn):
-    cur = conn.cursor()
-    cur.execute("SELECT id, client_name, outstanding_document, assigned_to, application_date, institution_applied_to, status, decision, remarks FROM student_registration")
-    rows = cur.fetchall()
-    return rows
-
+# Payment and registration functions
 def insert_registration_record(conn, record):
     sql = '''INSERT INTO student_registration(client_name, outstanding_document, assigned_to, application_date, institution_applied_to, status, decision, remarks, doc_file)
              VALUES(?,?,?,?,?,?,?,?,?)'''
-    cur = conn.cursor()
-    cur.execute(sql, record)
-    conn.commit()
-
-def delete_registration_record(conn, record_id):
-    sql = '''DELETE FROM student_registration WHERE id=?'''
-    cur = conn.cursor()
-    cur.execute(sql, (record_id,))
-    conn.commit()
-
-def update_registration_record(conn, record):
-    sql = '''UPDATE student_registration
-             SET client_name=?, outstanding_document=?, assigned_to=?, application_date=?, institution_applied_to=?, status=?, decision=?, remarks=?
-             WHERE id=?'''
     cur = conn.cursor()
     cur.execute(sql, record)
     conn.commit()
@@ -180,8 +128,22 @@ def fetch_all_payment_records(conn):
     rows = cur.fetchall()
     return rows
 
-def delete_payment_record(conn, record_id):
-    sql = '''DELETE FROM student_payments WHERE id=?'''
+def fetch_all_registration_records(conn):
+    cur = conn.cursor()
+    cur.execute("SELECT id, client_name, outstanding_document, assigned_to, application_date, institution_applied_to, status, decision, remarks FROM student_registration")
+    rows = cur.fetchall()
+    return rows
+
+def update_registration_record(conn, record):
+    sql = '''UPDATE student_registration
+             SET client_name=?, outstanding_document=?, assigned_to=?, application_date=?, institution_applied_to=?, status=?, decision=?, remarks=?
+             WHERE id=?'''
+    cur = conn.cursor()
+    cur.execute(sql, record)
+    conn.commit()
+
+def delete_registration_record(conn, record_id):
+    sql = '''DELETE FROM student_registration WHERE id=?'''
     cur = conn.cursor()
     cur.execute(sql, (record_id,))
     conn.commit()
@@ -194,16 +156,50 @@ def update_payment_record(conn, record):
     cur.execute(sql, record)
     conn.commit()
 
+def delete_payment_record(conn, record_id):
+    sql = '''DELETE FROM student_payments WHERE id=?'''
+    cur = conn.cursor()
+    cur.execute(sql, (record_id,))
+    conn.commit()
+
+# Email function
+def send_email(to, subject, message):
+    sender_email = "your_email@gmail.com"  # Replace with your email
+    sender_password = "your_app_password"  # Replace with your app password
+
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = to
+    msg['Subject'] = subject
+
+    msg.attach(MIMEText(message, 'plain'))
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        text = msg.as_string()
+        server.sendmail(sender_email, to, text)
+        server.quit()
+        st.success(f"Email sent to {to} with subject '{subject}' and message '{message}'")
+    except Exception as e:
+        st.error(f"Failed to send email: {str(e)}")
+
+# Main Streamlit application
 def main():
     st.title("SIKA Manager")
 
+    # Database connection
     db_path = 'sika_manager.db'
     conn = create_connection(db_path)
     create_tables(conn)
+    alter_table(conn)
 
+    # Default admin user (only runs once)
     if conn.execute('SELECT * FROM users WHERE username = "admin"').fetchone() is None:
         insert_user(conn, 'admin', 'admin123', 'admin')
 
+    # Sidebar for login
     if 'username' not in st.session_state:
         st.sidebar.title("Login")
         username = st.sidebar.text_input("Username")
@@ -367,13 +363,6 @@ def main():
             for chat in chat_messages:
                 st.write(f"{chat[3]} - {chat[1]}: {chat[2]}")
 
-            # Add an auto-refresh option
-            refresh_rate = st.slider('Refresh rate (seconds)', 1, 30, 5)
-            if st.button('Start Auto-Refresh'):
-                while True:
-                    st.experimental_rerun()
-                    time.sleep(refresh_rate)
-
         with tabs[4]:
             st.header("Send Email")
             with st.form("email_form"):
@@ -383,14 +372,7 @@ def main():
                 send_email_button = st.form_submit_button("Send Email")
 
                 if send_email_button:
-                    send_email(conn, recipient, subject, email_message)
-
-            st.subheader("Email History")
-            email_history = conn.execute("SELECT * FROM email_history ORDER BY timestamp DESC").fetchall()
-            if email_history:
-                columns = ['ID', 'Recipient', 'Subject', 'Message', 'Timestamp']
-                df = pd.DataFrame(email_history, columns=columns)
-                st.dataframe(df)
+                    send_email(recipient, subject, email_message)
 
         if st.session_state['role'] == 'admin':
             with tabs[5]:
